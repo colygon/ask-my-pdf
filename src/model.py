@@ -143,15 +143,15 @@ def fix_text_problems(text):
 	text = re.sub('\s+[-]\s+','',text) # word continuation in the next line
 	return text
 
-def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde_prompt=None, limit=None, n_before=1, n_after=1, model=None):
+def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde_prompt=None, limit=None, n_before=1, n_after=1, model=None, use_crewai=False):
 	"get dictionary with the answer for the given question (text)."
 	out = {}
-	
+
 	if hyde:
 		# TODO: model param
 		out['hyde'] = hypotetical_answer(text, index, hyde_prompt=hyde_prompt, temperature=temperature)
 		# TODO: usage
-	
+
 	# RANK FRAGMENTS
 	if hyde:
 		resp = ai.embedding(out['hyde']['text'])
@@ -163,9 +163,9 @@ def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde
 	t0 = now()
 	id_list, dist_list, text_list = query_by_vector(v, index, limit=limit)
 	dt0 = now()-t0
-	
+
 	# BUILD PROMPT
-	
+
 	# select fragments
 	N_BEFORE = 1 # TODO: param
 	N_AFTER =  1 # TODO: param
@@ -176,7 +176,7 @@ def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde
 				selected[x] = rank
 	selected2 = [(id,rank) for id,rank in selected.items()]
 	selected2.sort(key=lambda x:(x[1],x[0]))
-	
+
 	# build context
 	SEPARATOR = '\n---\n'
 	context = ''
@@ -190,21 +190,44 @@ def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde
 			frag_list += [frag]
 			context_len = ai.get_token_count(context)
 	out['context_len'] = context_len
-	prompt = f"""
-		{task or 'Task: Answer question based on context.'}
-		
-		Context:
-		{context}
-		
-		Question: {text}
-		
-		Answer:""" # TODO: move to prompts.py
-	
-	# GET ANSWER
-	resp2 = ai.complete(prompt, temperature=temperature, model=model)
-	answer = resp2['text']
-	usage = resp2['usage']
-	
+
+	# GET ANSWER - CrewAI or Traditional
+	if use_crewai:
+		try:
+			from crew_agents import create_crew_for_query
+			crew_resp = create_crew_for_query(
+				index=index,
+				question=text,
+				context_fragments=frag_list,
+				api_key=os.getenv('OPENAI_API_KEY'),
+				model=model or 'gpt-3.5-turbo',
+				temperature=temperature,
+				max_frags=max_frags
+			)
+			answer = crew_resp['text']
+			usage = {'crewai': True, 'agents_used': crew_resp.get('agents_used', [])}
+			resp2 = {'model': crew_resp.get('model', model), 'usage': usage}
+		except Exception as e:
+			# Fallback to traditional method if CrewAI fails
+			print(f"CrewAI error, falling back to traditional method: {e}")
+			use_crewai = False
+
+	if not use_crewai:
+		prompt = f"""
+			{task or 'Task: Answer question based on context.'}
+
+			Context:
+			{context}
+
+			Question: {text}
+
+			Answer:""" # TODO: move to prompts.py
+
+		resp2 = ai.complete(prompt, temperature=temperature, model=model)
+		answer = resp2['text']
+		usage = resp2['usage']
+		out['prompt'] = prompt
+
 	# OUTPUT
 	out['vector_query_time'] = dt0
 	out['id_list'] = id_list
@@ -212,9 +235,9 @@ def query(text, index, task=None, temperature=0.0, max_frags=1, hyde=False, hyde
 	out['selected'] = selected
 	out['selected2'] = selected2
 	out['frag_list'] = frag_list
+	out['use_crewai'] = use_crewai
 	#out['query.vector'] = resp['vector']
 	out['usage'] = usage
-	out['prompt'] = prompt
 	out['model'] = resp2['model']
 	# CORE
 	out['text'] = answer

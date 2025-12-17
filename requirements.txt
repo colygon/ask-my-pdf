@@ -7,3 +7,5 @@ pycryptodome
 boto3
 redis
 retry
+crewai>=0.86.0
+langchain-openai>=0.3.0

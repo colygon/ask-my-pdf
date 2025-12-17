@@ -177,6 +177,10 @@ def ui_hyde():
 def ui_hyde_summary():
 	st.checkbox('use summary in HyDE', value=True, key='use_hyde_summary')
 
+def ui_crewai():
+	st.checkbox('use CrewAI agents', value=False, key='use_crewai',
+		help='Enable multi-agent system with PDF Analyzer, Context Researcher, and Answer Synthesizer agents')
+
 def ui_task_template():
 	st.selectbox('task prompt template', prompts.TASK.keys(), key='task_name')
 
@@ -235,8 +239,10 @@ def b_ask():
 		max_frags = ss.get('max_frags',1)
 		n_before = ss.get('n_frag_before',0)
 		n_after  = ss.get('n_frag_after',0)
+		use_crewai = ss.get('use_crewai', False)
 		index = ss.get('index',{})
-		with st.spinner('preparing answer'):
+		spinner_text = 'preparing answer with CrewAI agents' if use_crewai else 'preparing answer'
+		with st.spinner(spinner_text):
 			resp = model.query(question, index,
 					task=task,
 					temperature=temperature,
@@ -247,6 +253,7 @@ def b_ask():
 					n_before=n_before,
 					n_after=n_after,
 					model=ss['model'],
+					use_crewai=use_crewai,
 				)
 		usage = resp.get('usage',{})
 		usage['cnt'] = 1
@@ -314,6 +321,7 @@ with st.sidebar:
 		ui_fix_text()
 		ui_hyde()
 		ui_hyde_summary()
+		ui_crewai()
 		ui_temperature()
 		b_reload()
 		ui_task_template()
