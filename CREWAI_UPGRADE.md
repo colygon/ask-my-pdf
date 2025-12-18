@@ -45,6 +45,34 @@ This collaborative approach ensures:
 - Higher quality, well-synthesized answers
 - Reduced hallucination through multi-agent verification
 
+### ArxivPaperTool Integration (Tool Enhancement T4)
+
+The CrewAI upgrade now includes **ArxivPaperTool** for fetching and analyzing academic papers from Arxiv:
+
+#### What is ArxivPaperTool?
+ArxivPaperTool is a specialized CrewAI tool that allows agents to:
+- Search for academic papers on Arxiv.org
+- Retrieve paper abstracts, metadata, and summaries
+- Find relevant research to supplement PDF document analysis
+- Provide theoretical foundations for technical questions
+
+#### When to Use Arxiv Search
+The ArxivPaperTool is particularly useful when:
+- Analyzing technical or scientific PDFs that reference academic research
+- Answering questions that would benefit from additional academic context
+- Looking up papers mentioned in the PDF document
+- Finding theoretical foundations for complex topics
+- Validating claims with peer-reviewed research
+
+#### Integration with Context Researcher Agent
+The **Context Research Specialist** agent can use ArxivPaperTool when enabled:
+- Searches Arxiv for papers related to the user's question
+- Retrieves relevant papers to supplement PDF context
+- Provides academic references in the final answer
+- Combines PDF content with published research findings
+
+This is an **optional enhancement** that can be enabled via the `use_arxiv` parameter.
+
 ## Implementation Details
 
 ### New Files
@@ -55,6 +83,13 @@ The core CrewAI implementation containing:
 - `PDFCrewAgents`: Factory class for creating the three specialized agents
 - `PDFQuestionAnsweringCrew`: Orchestrator class that manages agent collaboration
 - `create_crew_for_query()`: Convenience function for easy integration
+
+#### `src/arxiv_tools.py`
+ArxivPaperTool integration for academic paper search:
+
+- `PDFArxivTools`: Factory class for creating and managing Arxiv tools
+- `create_arxiv_tool()`: Convenience function to create ArxivPaperTool instance
+- `get_all_pdf_tools()`: Get all available tools for PDF analysis
 
 ### Modified Files
 
@@ -74,6 +109,7 @@ The core CrewAI implementation containing:
 Added new dependencies:
 - `crewai>=0.86.0` - Multi-agent AI framework
 - `langchain-openai>=0.3.0` - OpenAI integration for LangChain/CrewAI
+- `crewai-tools>=0.12.0` - CrewAI tools including ArxivPaperTool
 
 ## Usage
 
@@ -173,11 +209,50 @@ response = create_crew_for_query(
     api_key="your-api-key",
     model="gpt-3.5-turbo",
     temperature=0.0,
-    max_frags=4
+    max_frags=4,
+    use_arxiv=False  # Enable ArxivPaperTool
 )
 
 print(response['text'])  # The answer
 print(response['agents_used'])  # List of agents that participated
+print(response.get('tools_enabled'))  # List of tools enabled (if any)
+```
+
+### ArxivPaperTool Usage
+
+Using ArxivPaperTool with CrewAI agents.
+
+```python
+from arxiv_tools import create_arxiv_tool, get_all_pdf_tools
+from crew_agents import PDFCrewAgents
+
+# Create a single Arxiv tool
+arxiv_tool = create_arxiv_tool()
+
+# Get all available tools (returns list with ArxivPaperTool)
+tools = get_all_pdf_tools()
+
+# Create agents with Arxiv tool enabled
+agents_factory = PDFCrewAgents(
+    api_key="your-api-key",
+    model="gpt-3.5-turbo",
+    temperature=0.0,
+    use_arxiv=True  # Enable ArxivPaperTool
+)
+
+# Create crew with Arxiv enabled
+from crew_agents import PDFQuestionAnsweringCrew
+
+crew = PDFQuestionAnsweringCrew(
+    index=pdf_index,
+    api_key="your-api-key",
+    use_arxiv=True  # Enable ArxivPaperTool
+)
+
+result = crew.answer_question(
+    question="What are the latest developments in transformer architectures?",
+    context_fragments=relevant_fragments
+)
 ```
 
 ## Configuration
@@ -204,6 +279,9 @@ CrewAI agents use the same model as specified in the GUI:
 5. **Transparency**: Clear agent roles make the process more understandable
 6. **Flexibility**: Easy to enable/disable via checkbox - no breaking changes
 7. **Extensibility**: Agent architecture makes it easy to add new capabilities
+8. **Academic Research Integration**: ArxivPaperTool provides access to millions of academic papers for enhanced context
+9. **Scientific Validation**: Ability to cross-reference PDF content with peer-reviewed research
+10. **Up-to-date Knowledge**: Access to recent academic publications beyond the PDF document
 
 ## Performance Considerations
 
@@ -213,7 +291,12 @@ CrewAI mode uses more tokens due to:
 - Inter-agent communication
 - More detailed prompting
 
-**Recommendation**: Use CrewAI for complex questions where quality is critical. Use traditional mode for simple queries.
+When ArxivPaperTool is enabled, additional tokens are used for:
+- Arxiv paper search queries
+- Paper abstract and metadata retrieval
+- Integration of academic content into responses
+
+**Recommendation**: Use CrewAI for complex questions where quality is critical. Use traditional mode for simple queries. Enable ArxivPaperTool only when analyzing technical/scientific documents that would benefit from academic research context.
 
 ### Response Time
 CrewAI mode takes longer because:
@@ -221,9 +304,15 @@ CrewAI mode takes longer because:
 - Multiple LLM calls
 - More thorough analysis
 
+When ArxivPaperTool is enabled, additional time is needed for:
+- Arxiv API queries
+- Paper retrieval and processing
+- Integration of research findings
+
 **Typical Timing**:
 - Traditional mode: 2-5 seconds
-- CrewAI mode: 8-15 seconds
+- CrewAI mode (without Arxiv): 8-15 seconds
+- CrewAI mode (with Arxiv): 15-30 seconds (depending on search complexity)
 
 ## Backward Compatibility
 

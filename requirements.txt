@@ -9,3 +9,4 @@ redis
 retry
 crewai>=0.86.0
 langchain-openai>=0.3.0
+crewai-tools>=0.12.0

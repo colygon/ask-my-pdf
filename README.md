@@ -24,6 +24,17 @@ Thank you for your interest in my application. Please be aware that this is only
 
 - [Precise Zero-Shot Dense Retrieval without Relevance Labels](https://arxiv.org/abs/2212.10496) aka **HyDE** (Hypothetical Document Embeddings)
 
+### CrewAI Enhancement with ArxivPaperTool
+
+This fork includes a **CrewAI multi-agent system** upgrade with **ArxivPaperTool** integration:
+
+- **Multi-Agent Architecture**: Three specialized agents (PDF Analyzer, Context Researcher, Answer Synthesizer) work collaboratively
+- **ArxivPaperTool**: Agents can search and retrieve academic papers from Arxiv.org to supplement PDF analysis
+- **Enhanced Research**: Combines PDF document content with relevant academic research for more comprehensive answers
+- **Academic Validation**: Cross-reference PDF content with peer-reviewed publications
+
+See [CREWAI_UPGRADE.md](CREWAI_UPGRADE.md) for detailed documentation on the multi-agent system and ArxivPaperTool integration.
+
 
 
 ### Installation

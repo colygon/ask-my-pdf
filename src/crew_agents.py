@@ -10,13 +10,14 @@ This module defines three specialized agents for PDF question answering:
 
 from crewai import Agent, Task, Crew, Process
 from langchain_openai import ChatOpenAI
+from arxiv_tools import get_all_pdf_tools
 import os
 
 
 class PDFCrewAgents:
     """Factory class for creating specialized PDF Q&A agents"""
 
-    def __init__(self, api_key=None, model="gpt-3.5-turbo", temperature=0.0):
+    def __init__(self, api_key=None, model="gpt-3.5-turbo", temperature=0.0, use_arxiv=False):
         """
         Initialize PDF Crew Agents
 
@@ -24,10 +25,12 @@ class PDFCrewAgents:
             api_key: OpenAI API key (defaults to OPENAI_API_KEY env var)
             model: LLM model to use
             temperature: Temperature for LLM responses
+            use_arxiv: Enable ArxivPaperTool for academic paper search
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         self.model = model
         self.temperature = temperature
+        self.use_arxiv = use_arxiv
 
         # Initialize LLM
         self.llm = ChatOpenAI(
@@ -35,6 +38,9 @@ class PDFCrewAgents:
             temperature=self.temperature,
             api_key=self.api_key
         )
+
+        # Initialize tools
+        self.tools = get_all_pdf_tools() if use_arxiv else []
 
     def create_pdf_analyzer_agent(self):
         """
@@ -59,18 +65,27 @@ class PDFCrewAgents:
         Create Context Researcher Agent
 
         Role: Find and rank relevant context from PDF fragments
+        Tools: ArxivPaperTool (if enabled) for searching academic papers
         """
-        return Agent(
-            role='Context Research Specialist',
-            goal='Find the most relevant document fragments and context that best answer user questions',
-            backstory="""You are a research specialist with exceptional skills in information
+        backstory = """You are a research specialist with exceptional skills in information
             retrieval and semantic search. You understand how to match questions with relevant
             context, even when the connection is not immediately obvious. You excel at ranking
             information by relevance and identifying the most useful fragments from large documents.
             You use advanced techniques like HyDE (Hypothetical Document Embeddings) to improve
-            search accuracy.""",
+            search accuracy."""
+
+        if self.use_arxiv:
+            backstory += """ Additionally, you have access to Arxiv academic paper search to find
+            relevant research papers that can provide supplementary context and theoretical foundations
+            for answering complex questions."""
+
+        return Agent(
+            role='Context Research Specialist',
+            goal='Find the most relevant document fragments and context that best answer user questions',
+            backstory=backstory,
             verbose=True,
             allow_delegation=False,
+            tools=self.tools,
             llm=self.llm
         )
 
@@ -114,7 +129,7 @@ class PDFQuestionAnsweringCrew:
     Orchestrates the three agents to answer questions about PDF documents
     """
 
-    def __init__(self, index, api_key=None, model="gpt-3.5-turbo", temperature=0.0):
+    def __init__(self, index, api_key=None, model="gpt-3.5-turbo", temperature=0.0, use_arxiv=False):
         """
         Initialize PDF Q&A Crew
 
@@ -123,17 +138,20 @@ class PDFQuestionAnsweringCrew:
             api_key: OpenAI API key
             model: LLM model to use
             temperature: Temperature for responses
+            use_arxiv: Enable ArxivPaperTool for academic paper search
         """
         self.index = index
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
         self.model = model
         self.temperature = temperature
+        self.use_arxiv = use_arxiv
 
         # Initialize agents factory
         self.agents_factory = PDFCrewAgents(
             api_key=self.api_key,
             model=self.model,
-            temperature=self.temperature
+            temperature=self.temperature,
+            use_arxiv=self.use_arxiv
         )
 
         # Create agents
@@ -172,17 +190,29 @@ class PDFQuestionAnsweringCrew:
         )
 
         # Task 2: Research relevant context
-        research_task = Task(
-            description=f"""Given the user's question: "{question}"
+        research_description = f"""Given the user's question: "{question}"
 
             And the following context fragments:
             {context}
 
             Identify which parts of the context are most relevant to answering the question.
-            Rank the information by relevance and extract the key facts needed to answer the question.
-            If the context doesn't contain information to answer the question, state that clearly.""",
+            Rank the information by relevance and extract the key facts needed to answer the question."""
+
+        if self.use_arxiv:
+            research_description += """
+
+            If the question relates to academic or technical topics, you may search Arxiv for relevant
+            research papers to provide additional context and theoretical foundations. Use the ArxivPaperTool
+            to find papers related to the question topic."""
+
+        research_description += """
+
+            If the context doesn't contain information to answer the question, state that clearly."""
+
+        research_task = Task(
+            description=research_description,
             agent=self.researcher,
-            expected_output="Ranked list of relevant information extracted from context"
+            expected_output="Ranked list of relevant information extracted from context, with optional Arxiv paper references if applicable"
         )
 
         # Task 3: Synthesize answer
@@ -208,12 +238,17 @@ class PDFQuestionAnsweringCrew:
         # Execute crew
         result = crew.kickoff()
 
-        return {
+        response = {
             'text': str(result),
             'model': self.model,
             'agents_used': ['PDF Analyzer', 'Context Researcher', 'Answer Synthesizer'],
             'context_fragments': len(context_fragments[:max_frags])
         }
+
+        if self.use_arxiv:
+            response['tools_enabled'] = ['ArxivPaperTool']
+
+        return response
 
 
 def create_crew_for_query(index, question, context_fragments, **kwargs):
@@ -224,7 +259,7 @@ def create_crew_for_query(index, question, context_fragments, **kwargs):
         index: PDF index dictionary
         question: User's question
         context_fragments: List of relevant text fragments
-        **kwargs: Additional arguments (api_key, model, temperature, max_frags)
+        **kwargs: Additional arguments (api_key, model, temperature, max_frags, use_arxiv)
 
     Returns:
         dict: Answer and metadata
@@ -233,7 +268,8 @@ def create_crew_for_query(index, question, context_fragments, **kwargs):
         index=index,
         api_key=kwargs.get('api_key'),
         model=kwargs.get('model', 'gpt-3.5-turbo'),
-        temperature=kwargs.get('temperature', 0.0)
+        temperature=kwargs.get('temperature', 0.0),
+        use_arxiv=kwargs.get('use_arxiv', False)
     )
 
     return crew.answer_question(
